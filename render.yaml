@@ -1,0 +1,10 @@
+# Googly Workshop on Render (free web service, WebSockets supported).
+services:
+  - type: web
+    name: googly-workshop
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true

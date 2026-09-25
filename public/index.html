@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#16181c">
+<title>Googly Workshop</title>
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<!-- title -->
+<section id="scr-title" class="screen">
+  <div class="card">
+    <h1><span class="g">GOOGLY</span> <span class="w">WORKSHOP</span></h1>
+    <p class="sub">Run your own grocery store for one month (30 minutes). Buy stock, set your prices and beat 3 rival shops on Googly Street.</p>
+    <div id="invite" class="banner hidden"></div>
+    <div class="grid2 names">
+      <label>Your name<input id="nm" maxlength="14" placeholder="Your name" autocomplete="off"></label>
+      <label>Store name<input id="snm" maxlength="22" placeholder="YOUR NAME'S MARKET" autocomplete="off"></label>
+    </div>
+    <div id="swatches"></div>
+    <button id="b-solo" class="big green solo">▶ PLAY SOLO<small>you vs 3 computer shops</small></button>
+    <div class="row diffrow"><span>Rival skill:</span><div class="seg" id="diffseg"><button data-d="0">Easy</button><button data-d="1">Normal</button><button data-d="2">Hard</button></div></div>
+    <button id="b-continue" class="big gold hidden">CONTINUE MONTH</button>
+    <div class="row"><button id="b-online" class="purple">👥 PLAY WITH FRIENDS <small>(optional)</small></button><button id="b-help" class="grey">? How to play</button></div>
+    <div class="row"><button id="b-fs" class="grey mini2">⛶ Full screen</button><button id="b-music" class="grey mini2">♪ Music</button><button id="b-sfx" class="grey mini2">🔊 Sound</button></div>
+  </div>
+</section>
+
+<!-- online -->
+<section id="scr-online" class="screen hidden">
+  <div class="card wide">
+    <h2>PLAY WITH FRIENDS</h2>
+    <p class="sub">Up to 4 shop owners. Any empty store is run by a computer.</p>
+    <div class="row"><button id="on-pub" class="green">+ PUBLIC LOBBY</button><button id="on-priv" class="purple">🔒 PRIVATE LOBBY</button></div>
+    <div class="row"><input id="on-code" class="codebox" maxlength="4" placeholder="CODE" autocomplete="off"><button id="on-join" class="gold">JOIN WITH CODE</button></div>
+    <p class="sub">Open lobbies <button id="on-ref" class="mini grey">↻</button></p>
+    <div id="rooms"></div>
+    <p id="on-status" class="tiny"></p>
+    <div class="row"><button class="back grey">BACK</button></div>
+  </div>
+</section>
+
+<!-- lobby -->
+<section id="scr-lobby" class="screen hidden">
+  <div class="card wide lobby">
+    <div class="lobbytop">
+      <div><small>LOBBY CODE</small><div id="lb-code" class="bigcode">----</div></div>
+      <div class="row"><button id="lb-copy" class="gold">🔗 Copy invite link</button></div>
+    </div>
+    <div class="label">GOOGLY STREET · 4 STORES</div>
+    <div id="lb-seats"></div>
+    <div id="lb-hostctl" class="row">
+      <label class="chk">Computer skill <select id="lb-diff"><option value="0">Easy</option><option value="1">Normal</option><option value="2">Hard</option></select></label>
+      <label class="chk"><input type="checkbox" id="lb-pub"> Public lobby</label>
+    </div>
+    <div id="lb-wait" class="tiny"></div>
+    <div id="lb-chat"><div id="lb-log"></div><form id="lb-form"><input id="lb-msg" maxlength="120" placeholder="Say something…" autocomplete="off"><button class="grey">Send</button></form></div>
+    <div class="row"><button id="lb-start" class="big green">OPEN THE STORES</button><button id="lb-leave" class="grey">LEAVE</button></div>
+  </div>
+</section>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="h-money" class="pill"><small>YOUR CASH</small><b id="h-cash">$0</b><div id="h-today"></div><div id="h-stars"></div></div>
+  <div id="h-clock" class="pill"><div id="h-day">DAY 1 / 30</div><div id="h-time">8:00 AM</div><div class="bar"><div id="h-dayfill"></div></div><small id="h-left"></small></div>
+  <div id="h-board" class="pill"></div>
+  <div id="h-news" class="hidden"></div>
+  <div id="h-carry" class="pill hidden"></div>
+  <div id="h-prompt"></div>
+  <div id="h-hold" class="hidden"><div id="h-holdfill"></div></div>
+  <div id="h-keys"><span><kbd>WASD</kbd> walk</span><span><kbd>E</kbd> use</span><span><kbd>B</kbd> buy stock</span><span><kbd>P</kbd> prices</span><span><kbd>U</kbd> upgrades & staff</span><span><kbd>Tab</kbd> standings</span><span><kbd>←→</kbd>/drag camera</span><span><kbd>Esc</kbd> menu</span></div>
+  <div id="h-q" class="pill hidden"></div>
+  <div id="chatbox"><div id="log"></div><form id="chatform" class="hidden"><input id="chatin" maxlength="120" placeholder="Chat… (Enter to send)" autocomplete="off"></form></div>
+  <div id="saved">SAVED</div>
+</div>
+
+<!-- in-game panels -->
+<section id="pn-order" class="panel hidden">
+  <div class="pcard">
+    <div class="phead"><h2>🚚 BUY STOCK</h2><button class="close grey">✕</button></div>
+    <p class="tiny left">Wholesale prices change every day. Each box holds 24. A truck drops boxes in your stockroom in a few seconds. <b>10+ boxes: 5% off.</b></p>
+    <div id="order-list" class="plist"></div>
+    <div class="pfoot"><div id="order-total">Total: $0</div><button id="order-clear" class="grey">Clear</button><button id="order-go" class="big green">ORDER</button></div>
+  </div>
+</section>
+<section id="pn-prices" class="panel hidden">
+  <div class="pcard">
+    <div class="phead"><h2>🏷️ PRICES</h2><button class="close grey">✕</button></div>
+    <p class="tiny left">Higher prices = more money per sale, but shoppers say <b>"too pricey!"</b> and pick other stores. Shoppers expect about the <b>normal</b> price.</p>
+    <div class="row">All prices: <button class="grey mini" data-all="0.9">−10%</button><button class="grey mini" data-all="1">normal</button><button class="grey mini" data-all="1.1">+10%</button><button class="grey mini" data-all="1.25">+25%</button></div>
+    <div id="price-list" class="plist"></div>
+  </div>
+</section>
+<section id="pn-up" class="panel hidden">
+  <div class="pcard">
+    <div class="phead"><h2>🛠️ UPGRADES & STAFF</h2><button class="close grey">✕</button></div>
+    <div id="up-list" class="plist"></div>
+  </div>
+</section>
+<section id="pn-pick" class="panel hidden">
+  <div class="pcard small">
+    <div class="phead"><h2>📦 GRAB A TROLLEY</h2><button class="close grey">✕</button></div>
+    <p class="tiny left">Pick what to carry out to the shelves (up to 48).</p>
+    <div id="pick-list" class="pgrid"></div>
+  </div>
+</section>
+<section id="pn-board" class="panel hidden nopoint">
+  <div class="pcard"><div id="board-body"></div></div>
+</section>
+<div id="dayrep" class="hidden"></div>
+
+<!-- pause -->
+<section id="scr-pause" class="screen hidden">
+  <div class="card">
+    <h2 id="pause-title">PAUSED</h2>
+    <p id="pause-note" class="tiny"></p>
+    <div class="row"><button id="p-music" class="grey">♪ Music</button><button id="p-sfx" class="grey">🔊 Sound</button><button id="p-fs" class="grey">⛶ Full screen</button></div>
+    <div class="row"><button id="p-help" class="grey">? How to play</button></div>
+    <div class="row"><button id="p-resume" class="big green">RESUME</button><button id="p-quit" class="red">SAVE & QUIT</button></div>
+  </div>
+</section>
+
+<!-- end of month -->
+<section id="scr-end" class="screen hidden">
+  <div class="card wide">
+    <h2 id="end-title">END OF THE MONTH</h2>
+    <div id="end-podium"></div>
+    <canvas id="end-chart" width="760" height="220"></canvas>
+    <div id="end-list"></div>
+    <div class="row"><button id="end-again" class="big green">PLAY ANOTHER MONTH</button><button id="end-title-btn" class="grey">TITLE</button></div>
+  </div>
+</section>
+
+<!-- help -->
+<section id="scr-help" class="screen hidden">
+  <div class="card wide help">
+    <h2>HOW TO PLAY</h2>
+    <p><b>You own a grocery store.</b> A month is 30 days and each day lasts one minute. Whoever is <b>richest after 30 days</b> wins (cash + stock in your stockroom).</p>
+    <p><b>1. Buy stock (B).</b> Order boxes from the wholesale truck. They land in your <b>stockroom</b> at the back.</p>
+    <p><b>2. Fill the shelves.</b> Walk to the stockroom rack, press <b>E</b> and grab a trolley, then walk to a shelf and press <b>E</b> to stock it. Fruit goes on produce stands, milk and eggs in fridges, ice cream in freezers.</p>
+    <p><b>3. Ring up shoppers.</b> Stand behind the till and <b>hold E</b> to scan. Or hire a cashier (U) and let them do it.</p>
+    <p><b>4. Set prices (P).</b> Charge more and you earn more on each sale, but shoppers grumble "too pricey!" and go to rival stores. Watch what the others charge.</p>
+    <p><b>5. Grow (U).</b> Buy more shelves, fridges and freezers so you sell more kinds of food. Hire staff, open a second checkout lane, run ads. Mop up spills (<b>hold E</b>), because messy stores lose stars.</p>
+    <p>Every morning there's news. A heatwave means ice cream sells fast, and an egg shortage means eggs cost more to buy but sell for more too. Fresh food spoils a little every night, so don't overbuy.</p>
+    <p class="tiny">WASD walk · Shift run · E use / hold E scan & mop · B buy stock · P prices · U upgrades & staff · Tab standings · ←/→ or drag to turn the camera · scroll to zoom · T chat · M music · Esc menu</p>
+    <div class="row"><button class="back big green">GOT IT</button></div>
+  </div>
+</section>
+
+<div id="toast"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
