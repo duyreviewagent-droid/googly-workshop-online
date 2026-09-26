@@ -138,11 +138,12 @@ function buildTill(acc) {
 
 // ------------------------------------------------------------------ the world
 export class World {
-  constructor(canvas, { lowq = false } = {}) {
-    this.lowq = lowq;
+  constructor(canvas, { lowq = false, mobile = false } = {}) {
+    this.lowq = lowq; this.mobile = mobile;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !lowq, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(lowq ? 1 : 2, window.devicePixelRatio || 1));
-    this.renderer.shadowMap.enabled = !lowq; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // phones: cap the pixel ratio and use a cheaper, smaller shadow map
+    this.renderer.setPixelRatio(Math.min(lowq ? 1 : mobile ? 1.5 : 2, window.devicePixelRatio || 1));
+    this.renderer.shadowMap.enabled = !lowq; this.renderer.shadowMap.type = mobile ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 400);
@@ -151,7 +152,7 @@ export class World {
     this.sky = new THREE.Color('#9fd3ff'); this.scene.background = this.sky.clone(); this.scene.fog = new THREE.Fog(this.sky.clone(), 70, 190);
     this.hemi = new THREE.HemisphereLight(0xdfefff, 0x6b5a45, 1.0); this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xfff2dc, 2.4); this.sun.castShadow = !lowq;
-    this.sun.shadow.mapSize.set(2048, 2048); const sc = this.sun.shadow.camera; sc.left = -30; sc.right = 30; sc.top = 30; sc.bottom = -30; sc.near = 1; sc.far = 120;
+    this.sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048); const sc = this.sun.shadow.camera; sc.left = -30; sc.right = 30; sc.top = 30; sc.bottom = -30; sc.near = 1; sc.far = 120;
     this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.03;
     this.scene.add(this.sun); this.scene.add(this.sun.target);
     this.colliders = [];
@@ -163,8 +164,14 @@ export class World {
     this.buildRain();
     this.resize();
     addEventListener('resize', () => this.resize());
+    if (mobile) { addEventListener('orientationchange', () => setTimeout(() => this.resize(), 250)); window.visualViewport?.addEventListener('resize', () => this.resize()); }
   }
-  resize() { const w = innerWidth, h = innerHeight; this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
+  resize() {
+    const w = innerWidth, h = innerHeight; this.renderer.setSize(w, h, false); this.camera.aspect = w / h;
+    // a tall phone screen sees very little sideways at the desktop angle, so widen the view in portrait
+    if (this.mobile) this.camera.fov = w < h ? 66 : 46;
+    this.camera.updateProjectionMatrix();
+  }
 
   // ---------------------------------------------------------------- street
   buildStreet() {
@@ -478,7 +485,7 @@ export class World {
     return g;
   }
   buildRain() {
-    const n = this.lowq ? 600 : 2600, pos = new Float32Array(n * 6);
+    const n = this.lowq || this.mobile ? 900 : 2600, pos = new Float32Array(n * 6);
     for (let k = 0; k < n; k++) { const x = (Math.random() - 0.5) * 80, y = Math.random() * 20, z = (Math.random() - 0.5) * 60; pos.set([x, y, z, x + 0.05, y - 0.5, z], k * 6); }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     this.rain = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xaaccee, transparent: true, opacity: 0.45 }));

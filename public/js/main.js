@@ -25,7 +25,11 @@ const { PRODUCTS, PROD, SLOTS, FIXTURES, STAFF, UPGRADES, UP } = D;
 const prof = { name: store.get('name', ''), store: store.get('store', ''), color: store.get('color', '#9aa0a6'), diff: store.get('diff', 1) };
 const SERVER_PAGE = (() => { const s = Q.get('server'); if (s) return s.replace(/\/$/, ''); if (/^https?:$/.test(location.protocol)) return location.origin; return 'https://googly-workshop.onrender.com'; })();
 const SERVER_WS = SERVER_PAGE.replace(/^http/, 'ws');
-const world = new World($('view'), { lowq: Q.has('lq') });
+// phones & tablets: touch controls, compact layout, lighter rendering. The Mac app and desktop browsers never match this.
+const TOUCH = Q.has('touch') || ('ontouchstart' in window && (navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches));
+if (TOUCH) document.body.classList.add('touch');
+const KW = (desk, tch) => TOUCH ? tch : desk; // keyboard wording on desktop, tap wording on phones
+const world = new World($('view'), { lowq: Q.has('lq'), mobile: TOUCH });
 const clock = new THREE.Clock();
 
 // ------------------------------------------------------------------ screens
@@ -35,6 +39,15 @@ function show(id) { if (id !== screen) prevScreen = screen; screen = id; for (co
 function toast(t, ms = 2400) { const e = $('toast'); e.innerHTML = t; e.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.opacity = 0, ms); }
 document.querySelectorAll('.back').forEach(b => b.onclick = () => { sfx.click(); show(screen === 'scr-help' ? prevScreen : 'scr-title'); if (screen === 'scr-title') conn?.close?.(); });
 document.addEventListener('pointerdown', () => unlockAudio(), { capture: true });
+if (TOUCH) {
+  // iOS needs the audio unlock inside a touch gesture; also stop the page itself from zooming or rubber-banding
+  document.addEventListener('touchend', () => unlockAudio(), { capture: true });
+  for (const ev of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+  // no page-wide touchmove blocker (it stalls scrolling in the menus); CSS touch-action + fixed body stop page panning,
+  // and the game canvas / touch controls cancel their own touches
+  for (const el of [$('view'), $('touchui')]) el.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  if (!document.documentElement.requestFullscreen) { $('b-fs').classList.add('hidden'); $('p-fs').classList.add('hidden'); }
+}
 document.addEventListener('keydown', () => unlockAudio(), { capture: true });
 
 $('nm').value = prof.name; $('snm').value = prof.store;
@@ -151,6 +164,7 @@ $('lb-copy').onclick = async () => {
   try { await navigator.clipboard.writeText(link); toast('Invite link copied! Paste it to your friends:<br>' + esc(link), 4000); }
   catch { prompt('Send this link to your friends:', link); }
 };
+$('chatform').onsubmit = e => e.preventDefault();
 $('lb-form').onsubmit = e => { e.preventDefault(); const t = $('lb-msg').value.trim(); if (t) send({ t: 'chat', text: t }); $('lb-msg').value = ''; };
 function addChat(m) {
   const line = m.sys ? `<div class="sys">${esc(m.text)}</div>` : `<div><b style="color:${esc(m.color)}">${esc(m.from)}:</b> ${esc(m.text)}</div>`;
@@ -246,6 +260,7 @@ function onGameMsg(m) {
       const fig = new Googly({ color: c.color, role: 'shopper', lite: true, look: c.look, scale: 0.92 + (c.look % 3) * 0.05 });
       fig.group.position.set(c.x, 0, c.z);
       fig.hold({ basket: 0 });
+      if (TOUCH) fig.group.traverse(o => { o.castShadow = false; }); // phones: shoppers don't cast shadows (halves their draw calls)
       world.ents.add(fig.group);
       G.shoppers.set(c.id, { id: c.id, fig, buf: [{ t, x: c.x, z: c.z, yaw: Math.PI }], s: c.s, n: 0, st: 0, paid: false });
       break;
@@ -285,7 +300,7 @@ function onGameMsg(m) {
       break;
     }
     case 'spill':
-      if (m.on) { world.addSpill(m.id, m.x, m.z, m.kind); if (m.s === G.mine) { sfx.spill([m.x, 0.3, m.z]); if (!G.spillTip) { G.spillTip = true; toast('Someone spilled something! Stand on it and <b>hold E</b> to mop, or hire a janitor (U).', 4000); } } }
+      if (m.on) { world.addSpill(m.id, m.x, m.z, m.kind); if (m.s === G.mine) { sfx.spill([m.x, 0.3, m.z]); if (!G.spillTip) { G.spillTip = true; toast(KW('Someone spilled something! Stand on it and <b>hold E</b> to mop, or hire a janitor (U).', 'Someone spilled something! Stand on it and <b>hold the ACTION button</b> to mop, or hire a janitor (🛠️).'), 4000); } } }
       else { world.removeSpill(m.id); if (dist2(me.x, me.z, ...(spillPos(m.id) || [1e9, 1e9])) < 30) sfx.mop(null); }
       break;
     case 'truck': world.truck(m.i, m.eta); if (m.i === G.mine) setTimeout(() => G && sfx.truck([D.storeX(m.i) + 5, 1, -21]), Math.max(0, m.eta - 3.2) * 1000); break;
@@ -322,6 +337,7 @@ function addWorker(a) {
 }
 
 // ------------------------------------------------------------------ news, reports, end
+$('dayrep').addEventListener('click', () => $('dayrep').classList.add('hidden'));
 function showNews(ev, day) {
   if (!ev) return;
   const wd = D.WEEKDAYS[(day - 1) % 7];
@@ -428,10 +444,98 @@ addEventListener('keyup', e => {
 addEventListener('blur', () => { keys.clear(); interact(false); });
 // camera: drag to turn, wheel to zoom
 let drag = null;
-$('view').addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; });
+$('view').addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; drag = { x: e.clientX, y: e.clientY }; });
 addEventListener('pointerup', () => drag = null);
 addEventListener('pointermove', e => { if (!drag) return; cam.yaw -= (e.clientX - drag.x) * 0.006; cam.pitch = THREE.MathUtils.clamp(cam.pitch + (e.clientY - drag.y) * 0.004, 0.35, 1.3); drag = { x: e.clientX, y: e.clientY }; });
 $('view').addEventListener('wheel', e => { cam.dist = THREE.MathUtils.clamp(cam.dist * (1 + Math.sign(e.deltaY) * 0.1), 5, 26); }, { passive: true });
+
+// ------------------------------------------------------------------ touch controls (phones & tablets only)
+// left thumb: floating joystick · drag anywhere else: turn the camera · two fingers: pinch to zoom
+// ✋ ACTION = the E key (hold it to scan / mop) · 🚚 🏷️ 🛠️ = B P U · 🏆 = Tab · ☰ = Esc
+const tc = { mx: 0, mz: 0, run: false, stick: null, look: new Map(), pinch: 0 };
+let fingerDown = false;
+if (TOUCH) {
+  addEventListener('touchstart', () => { fingerDown = true; }, { capture: true, passive: true });
+  addEventListener('touchend', e => { if (!e.touches.length) { fingerDown = false; if (openPanelId === 'up') drawUp(); if (openPanelId === 'pick') drawPick(); } }, { capture: true, passive: true });
+  const zone = $('t-zone'), base = $('t-stick'), knob = $('t-knob'), R = 52;
+  const home = () => { base.style.left = base.style.top = ''; base.classList.remove('on'); knob.style.transform = ''; };
+  zone.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (tc.stick) return;
+    const t = e.changedTouches[0], zr = zone.getBoundingClientRect();
+    tc.stick = { id: t.identifier, x: t.clientX, y: t.clientY };
+    base.style.left = (t.clientX - zr.left) + 'px'; base.style.top = (t.clientY - zr.top) + 'px'; base.classList.add('on');
+  }, { passive: false });
+  const stickMove = t => {
+    let dx = t.clientX - tc.stick.x, dy = t.clientY - tc.stick.y;
+    const d = Math.hypot(dx, dy), m = Math.min(1, d / R);
+    tc.run = d > R * 1.45; // push past the ring to run
+    if (d > 6) { tc.mx = dx / d * m; tc.mz = dy / d * m; } else tc.mx = tc.mz = 0;
+    const k = Math.min(d, R) / (d || 1); knob.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
+  };
+  $('view').addEventListener('touchstart', e => {
+    e.preventDefault();
+    const live = new Set([...e.touches].map(t => t.identifier)); // forget fingers that left without a touchend
+    for (const id of tc.look.keys()) if (!live.has(id)) tc.look.delete(id);
+    if (tc.stick && !live.has(tc.stick.id)) { tc.stick = null; tc.mx = tc.mz = 0; tc.run = false; home(); }
+    for (const t of e.changedTouches) tc.look.set(t.identifier, { x: t.clientX, y: t.clientY });
+    if (tc.look.size === 2) { const [a, b] = [...tc.look.values()]; tc.pinch = Math.hypot(a.x - b.x, a.y - b.y); }
+  }, { passive: false });
+  addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (tc.stick && t.identifier === tc.stick.id) { stickMove(t); continue; }
+      const L = tc.look.get(t.identifier); if (!L) continue;
+      if (tc.look.size >= 2) {
+        L.x = t.clientX; L.y = t.clientY;
+        const [a, b] = [...tc.look.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (tc.pinch > 0 && d > 0) cam.dist = THREE.MathUtils.clamp(cam.dist * tc.pinch / d, 5, 20);
+        tc.pinch = d;
+      } else {
+        cam.yaw -= (t.clientX - L.x) * 0.008;
+        cam.pitch = THREE.MathUtils.clamp(cam.pitch + (t.clientY - L.y) * 0.005, 0.35, 1.3);
+        L.x = t.clientX; L.y = t.clientY;
+      }
+    }
+  }, { passive: true });
+  const endT = e => {
+    for (const t of e.changedTouches) {
+      if (tc.stick && t.identifier === tc.stick.id) { tc.stick = null; tc.mx = tc.mz = 0; tc.run = false; home(); }
+      tc.look.delete(t.identifier);
+    }
+    if (tc.look.size < 2) tc.pinch = 0;
+  };
+  addEventListener('touchend', endT); addEventListener('touchcancel', endT);
+  // buttons: act on touchstart (works while the other thumb is on the stick); click covers mice
+  const btn = (id, fn) => { const b = $(id); b.addEventListener('touchstart', e => { e.preventDefault(); unlockAudio(); fn(); }, { passive: false }); b.addEventListener('click', fn); };
+  const act = $('t-act');
+  act.addEventListener('touchstart', e => { e.preventDefault(); unlockAudio(); act.classList.add('down'); tc.act = e.changedTouches[0].identifier; interact(true); }, { passive: false });
+  const actUp = e => { if ([...e.changedTouches].some(t => t.identifier === tc.act)) { tc.act = null; act.classList.remove('down'); interact(false); } };
+  act.addEventListener('touchend', actUp); act.addEventListener('touchcancel', actUp);
+  btn('t-buy', () => G && !paused && togglePanel('order'));
+  btn('t-prices', () => G && !paused && togglePanel('prices'));
+  btn('t-up', () => G && !paused && togglePanel('up'));
+  btn('t-board', () => { if (!G) return; const p = $('pn-board'); p.classList.toggle('hidden'); if (!p.classList.contains('hidden')) drawBoard(); $('t-board').classList.toggle('on', !p.classList.contains('hidden')); });
+  btn('t-menu', () => { if (G && !paused) openPause(); });
+  btn('t-chat', () => { if (!G || G.solo) return; $('chatform').classList.remove('hidden'); $('chatin').focus(); });
+  $('chatin').addEventListener('blur', () => { if (TOUCH) setTimeout(() => $('chatform').classList.add('hidden'), 100); });
+}
+// the ACTION button shows what it will do right now
+const ACT_LABEL = { mop: ['HOLD', 'MOP'], till: ['HOLD', 'SCAN'], till2buy: ['', 'LANE 2'], visit: ['', 'LOOK'] };
+function drawActBtn(a, s) {
+  let top = '', main = 'ACTION', live = !!a;
+  if (a) {
+    if (ACT_LABEL[a.kind]) [top, main] = ACT_LABEL[a.kind];
+    if (a.kind === 'visit') live = false;
+    if (a.kind === 'rack') [top, main] = s.carry ? ['PUT', 'BACK'] : ['GRAB', 'STOCK'];
+    if (a.kind === 'buy') [top, main] = confirmBuy === a.slot ? ['TAP TO', 'CONFIRM'] : ['BUILD', D.money(FIXTURES[SLOTS[a.slot].kind].price)];
+    if (a.kind === 'sec') { const sec = s.secs[a.slot][a.sec]; if (s.carry) [top, main] = ['PUT', 'STOCK']; else if (sec.p) [top, main] = ['SET', 'PRICE']; else live = false; }
+  }
+  const h = `<small>${top}</small>${main}`;
+  const b = $('t-act');
+  if (b.dataset.h !== h) { b.dataset.h = h; b.innerHTML = h; }
+  b.classList.toggle('idle', !live);
+  $('t-chat').classList.toggle('hidden', !G || G.solo);
+}
 
 // ------------------------------------------------------------------ walking & bumping into things
 function colliders() {
@@ -448,8 +552,9 @@ function moveMe(dt) {
   if (keys.has('w')) iz -= 1; if (keys.has('s')) iz += 1; if (keys.has('a')) ix -= 1; if (keys.has('d')) ix += 1;
   if (keys.has('arrowleft')) cam.yaw += dt * 1.8; if (keys.has('arrowright')) cam.yaw -= dt * 1.8;
   if (keys.has('arrowup')) iz -= 1; if (keys.has('arrowdown')) iz += 1;
+  ix += tc.mx; iz += tc.mz; // on-screen joystick (0 on desktop)
   const L = Math.hypot(ix, iz);
-  const sp = (keys.has('shift') ? 6.2 : 4.3) * (holdKind ? 0 : 1);
+  const sp = (keys.has('shift') || tc.run ? 6.2 : 4.3) * (holdKind ? 0 : 1) * Math.min(1, L);
   let wx = 0, wz = 0;
   if (L > 0) { const c = Math.cos(cam.yaw), s = Math.sin(cam.yaw); const lx = ix / L, lz = iz / L; wx = lx * c + lz * s; wz = -lx * s + lz * c; }
   const k = 1 - Math.exp(-14 * dt);
@@ -501,7 +606,7 @@ function findAction() {
 }
 function describe(a) {
   const s = myStore(); if (!a) return '';
-  const K = t => `<kbd>${t}</kbd>`;
+  const K = t => `<kbd>${TOUCH ? (t.startsWith('hold') ? 'HOLD ✋' : 'TAP ✋') : t}</kbd>`;
   switch (a.kind) {
     case 'visit': { const o = G.stores[a.i]; return `<span class="dim">👀 Snooping in ${esc(o.name)}… check their price tags!</span>`; }
     case 'mop': return `${K('hold E')} Mop the spill`;
@@ -591,7 +696,7 @@ function drawOrder(force) {
     row.querySelector('[data-b]').textContent = D.money2(u * D.BOX);
     row.querySelector('[data-h]').innerHTML = `${s.back[pid]} in back<br><small>${onShelfOf(s, pid)} on shelf</small>`;
     row.querySelector('[data-q]').textContent = q;
-    row.querySelector('[data-w]').innerHTML = carried(s, pid) ? `${FIXTURES[p.kind].name}` : hasRoom(s, pid) ? `<span class="warn">new! goes on a ${FIXTURES[p.kind].name.toLowerCase()}</span>` : `<span class="bad">no ${FIXTURES[p.kind].name.toLowerCase()} space — buy one (U)</span>`;
+    row.querySelector('[data-w]').innerHTML = carried(s, pid) ? `${FIXTURES[p.kind].name}` : hasRoom(s, pid) ? `<span class="warn">new! goes on a ${FIXTURES[p.kind].name.toLowerCase()}</span>` : `<span class="bad">no ${FIXTURES[p.kind].name.toLowerCase()} space — buy one ${KW('(U)', 'in Upgrades')}</span>`;
     row.classList.toggle('dim', !carried(s, pid) && !hasRoom(s, pid));
   });
   if (boxes >= 10) total *= 0.95;
@@ -600,7 +705,7 @@ function drawOrder(force) {
 }
 const onShelfOf = (s, pid) => SLOTS.reduce((a, sl, k) => a + (s.fixtures[k] ? s.secs[k].reduce((b, sec) => b + (sec.p === pid ? sec.n : 0), 0) : 0), 0);
 $('order-go').onclick = () => { const items = {}; for (const [k, v] of Object.entries(cart)) if (v) items[k] = v; send({ t: 'order', items }); for (const k in cart) cart[k] = 0; drawOrder(); };
-$('auto-order').onchange = () => { send({ t: 'auto', on: $('auto-order').checked }); sfx.click(); toast($('auto-order').checked ? 'Auto-order ON: stock arrives by itself.' : 'Auto-order OFF: order stock yourself with B.'); };
+$('auto-order').onchange = () => { send({ t: 'auto', on: $('auto-order').checked }); sfx.click(); toast($('auto-order').checked ? 'Auto-order ON: stock arrives by itself.' : KW('Auto-order OFF: order stock yourself with B.', 'Auto-order OFF: order stock yourself here.')); };
 $('order-clear').onclick = () => { for (const k in cart) cart[k] = 0; sfx.click(); drawOrder(); };
 // --- prices
 function rivalBest(pid) {
@@ -662,7 +767,7 @@ function drawUp() {
     h += row(`${u.name}`, u.desc + (running && u.ad === s.ad ? ` <span class="ok">(running: ${s.adDays} day${s.adDays > 1 ? 's' : ''} left)</span>` : ''), own ? '<button disabled class="grey">OWNED ✓</button>' : `<button class="gold" data-up="${u.id}" ${s.cash < u.price ? 'disabled' : ''}>BUY ${D.money(u.price)}</button>`);
   }
   h += `<p class="tiny left">Rent is ${D.money(D.RENT)}/day. Your cash: <b>${D.money(s.cash)}</b></p>`;
-  if (h === drawUp.last) return; drawUp.last = h;
+  if (h === drawUp.last || fingerDown) return; drawUp.last = h;
   $('up-list').innerHTML = h;
   $('up-list').querySelectorAll('[data-fix]').forEach(b => b.onclick = () => { send({ t: 'fixture', slot: +b.dataset.fix }); });
   $('up-list').querySelectorAll('[data-hire]').forEach(b => b.onclick = () => { send({ t: 'hire', role: b.dataset.hire, on: true }); });
@@ -674,8 +779,8 @@ function drawPick() {
   const s = myStore();
   const list = PRODUCTS.filter(p => s.back[p.id] > 0 || carried(s, p.id)).sort((a, b) => (s.back[b.id] > 0) - (s.back[a.id] > 0));
   let n = 0;
-  const html = list.map(p => { const has = s.back[p.id] > 0; if (has) n++; return `<div class="pbtn ${has ? '' : 'none'}" data-p="${p.id}">${has && n <= 9 ? `<kbd>${n}</kbd>` : ''}<img src="${iconURL(p.id)}">${p.name}<small>${s.back[p.id]} in back · ${onShelfOf(s, p.id)} on shelf</small></div>`; }).join('') || '<div class="empty">The stockroom is empty. Press B to buy stock!</div>';
-  if (html === drawPick.last) return; drawPick.last = html; $('pick-list').innerHTML = html;
+  const html = list.map(p => { const has = s.back[p.id] > 0; if (has) n++; return `<div class="pbtn ${has ? '' : 'none'}" data-p="${p.id}">${has && n <= 9 && !TOUCH ? `<kbd>${n}</kbd>` : ''}<img src="${iconURL(p.id)}">${p.name}<small>${s.back[p.id]} in back · ${onShelfOf(s, p.id)} on shelf</small></div>`; }).join('') || `<div class="empty">The stockroom is empty. ${KW('Press B', 'Tap 🚚 STOCK')} to buy stock!</div>`;
+  if (html === drawPick.last || fingerDown) return; drawPick.last = html; $('pick-list').innerHTML = html;
   $('pick-list').querySelectorAll('.pbtn:not(.none)').forEach(b => b.onclick = () => { send({ t: 'pick', p: b.dataset.p }); closePanels(); });
 }
 function drawBoard() {
@@ -700,19 +805,20 @@ function drawHUD() {
   const rows = G.stores.map((x, i) => ({ x, i })).sort((a, b) => b.x.cash - a.x.cash);
   $('h-board').innerHTML = '<small>RICHEST STORE WINS</small>' + rows.map((r, k) => `<div class="r ${r.i === G.mine ? 'me' : ''}"><b>${k + 1}</b><span class="dot" style="background:${esc(r.x.color)}"></span><span class="n">${esc(r.x.ownerName)}</span><span>${D.money(r.x.cash)}</span><span class="st">★${r.x.rating.toFixed(1)}</span></div>`).join('');
   // carrying
-  if (s.carry) { $('h-carry').classList.remove('hidden'); $('h-carry').innerHTML = `<img src="${iconURL(s.carry.p)}"><div>${esc(PROD[s.carry.p].name)} × ${s.carry.n}<small>find a ${FIXTURES[PROD[s.carry.p].kind].name.toLowerCase()} and press E</small></div>`; }
+  if (s.carry) { $('h-carry').classList.remove('hidden'); $('h-carry').innerHTML = `<img src="${iconURL(s.carry.p)}"><div>${esc(PROD[s.carry.p].name)} × ${s.carry.n}<small>find a ${FIXTURES[PROD[s.carry.p].kind].name.toLowerCase()} and ${KW('press E', 'tap ✋')}</small></div>`; }
   else $('h-carry').classList.add('hidden');
   // queue warning
   const waiting = s.q + (s.tills?.[0] ? 1 : 0) + (s.tills?.[1] ? 1 : 0);
   const staffed = s.staff.cashier || holdKind === 'till';
   $('h-q').classList.toggle('hidden', waiting === 0);
   $('h-q').classList.toggle('warn', waiting >= 3 && !staffed);
-  $('h-q').innerHTML = `🧺 ${waiting} at the checkout${!staffed ? ' — <b>go to the till and hold E</b> (or hire a cashier)' : ''}`;
+  $('h-q').innerHTML = `🧺 ${waiting} at the checkout${!staffed ? ` — <b>go to the till and ${KW('hold E', 'hold ✋')}</b> (or hire a cashier)` : ''}`;
   if (waiting >= 4 && !staffed && G.prevQ < 4) sfx.warn();
   G.prevQ = waiting;
   // prompt
   const a = findAction();
   $('h-prompt').innerHTML = describe(a);
+  if (TOUCH) drawActBtn(a, s);
 }
 
 // ------------------------------------------------------------------ title backdrop
@@ -768,9 +874,12 @@ function tick() {
   // everyone else, drawn a little in the past so movement is smooth
   const rt = performance.now() / 1000 - 0.12;
   const doorNear = [];
+  // phones: shoppers and staff far from you (other stores, off screen) are neither animated nor drawn
+  const FAR = TOUCH ? (cam.dist + 12) ** 2 : Infinity;
   for (const e of G.shoppers.values()) {
     const p = interp(e, rt); if (!p) continue;
     const g = e.fig.group, ox = g.position.x, oz = g.position.z;
+    if (TOUCH) { const vis = dist2(p.x, p.z, cam.tx, cam.tz) < FAR; g.visible = vis; if (!vis) { g.position.set(p.x, 0, p.z); if (p.z > -2.5 && p.z < 2.5) doorNear.push(p.x); continue; } }
     g.position.set(p.x, 0, p.z); g.rotation.y = p.yaw;
     const v = Math.hypot(p.x - ox, p.z - oz) / Math.max(dt, 1e-3);
     if (!e.paid) e.fig.hold({ basket: e.n });
@@ -781,6 +890,7 @@ function tick() {
   for (const e of G.workers.values()) {
     const p = interp(e, rt); if (!p) continue;
     const g = e.fig.group, ox = g.position.x, oz = g.position.z;
+    if (TOUCH) { const vis = dist2(p.x, p.z, cam.tx, cam.tz) < FAR; g.visible = vis; if (!vis) { g.position.set(p.x, 0, p.z); continue; } }
     g.position.set(p.x, 0, p.z); g.rotation.y = p.yaw;
     const v = Math.hypot(p.x - ox, p.z - oz) / Math.max(dt, 1e-3);
     if (e.role !== 'janitor') e.fig.hold(e.carry ? { box: e.carry } : null);
@@ -818,8 +928,10 @@ function tick() {
 buildTitleFig();
 music.play('menu');
 requestAnimationFrame(tick);
-if (Q.has('auto') || Q.has('mactest')) setTimeout(() => macLog(`running: G=${!!G} stores=${G?.stores?.length} shoppers=${G?.shoppers?.size} day=${G?.day} tt=${G?.tt}`), 9000);
+if (Q.has('auto') || Q.has('mactest')) setTimeout(() => macLog(`running: G=${!!G} stores=${G?.stores?.length} shoppers=${G?.shoppers?.size} day=${G?.day} tt=${G?.tt} touch=${TOUCH}`), 9000);
 if (Q.has('auto')) { prof.name = prof.name || 'TESTER'; startSolo(null); }
+// test hook (only with ?auto=1): read state and teleport, used by test/mobile.mjs runs
+if (Q.has('auto')) window.__gw = { get G() { return G; }, get conn() { return conn; }, world, me, cam, tc, D, send: m => send(m), store: () => myStore(), get panel() { return openPanelId; }, get hold() { return holdKind; }, at: (lx, lz) => { me.x = D.storeX(G.mine) + lx; me.z = lz; cam.tx = me.x; cam.tz = me.z; } };
 // fast-forward the local simulation for tests: ?auto=1&ff=SECONDS
 if (Q.has('ff')) setTimeout(() => { const core = conn?.core; if (!core) return; const r = [...core.rooms.values()][0]; for (let t = 0; t < +Q.get('ff'); t += 0.1) core.step(r, 0.1); }, 300);
 if (Q.has('cam')) { const [x, z, yaw, dist, pitch] = Q.get('cam').split(',').map(Number); setTimeout(() => { Object.assign(me, { x, z }); cam.yaw = yaw || 0; if (dist) cam.dist = dist; if (pitch) cam.pitch = pitch; cam.tx = x; cam.tz = z; }, 500); }

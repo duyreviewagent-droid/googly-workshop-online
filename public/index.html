@@ -78,6 +78,14 @@
   <div id="h-q" class="pill hidden"></div>
   <div id="chatbox"><div id="log"></div><form id="chatform" class="hidden"><input id="chatin" maxlength="120" placeholder="Chat… (Enter to send)" autocomplete="off"></form></div>
   <div id="saved">SAVED</div>
+  <!-- touch controls (phones & tablets only; hidden on desktop and in the Mac app) -->
+  <div id="touchui" class="touch-only">
+    <div id="t-zone"><div id="t-stick"><div id="t-knob"></div></div></div>
+    <button id="t-menu" class="tb" aria-label="Menu">☰</button>
+    <div id="t-col"><button id="t-buy" class="tb lab">🚚<small>STOCK</small></button><button id="t-prices" class="tb lab">🏷️<small>PRICES</small></button><button id="t-up" class="tb lab">🛠️<small>UPGRADE</small></button></div>
+    <div id="t-side"><button id="t-chat" class="tb hidden" aria-label="Chat">💬</button><button id="t-board" class="tb" aria-label="Standings">🏆</button></div>
+    <button id="t-act" class="idle"><small></small>ACTION</button>
+  </div>
 </div>
 
 <!-- in-game panels -->
@@ -142,14 +150,15 @@
 <section id="scr-help" class="screen hidden">
   <div class="card wide help">
     <h2>HOW TO PLAY</h2>
+    <p class="touch-only"><b>On a phone:</b> left thumb = joystick to walk (push it far to run). Drag anywhere else to turn the camera, pinch to zoom. The big <b>✋ button</b> does whatever the text above it says: <b>hold it</b> at the till to scan and on a spill to mop. 🚚 buy stock · 🏷️ prices · 🛠️ upgrades & staff · 🏆 standings · ☰ menu.</p>
     <p><b>You own a grocery store.</b> A month is 30 days and each day lasts one minute. Whoever is <b>richest after 30 days</b> wins (cash + stock in your stockroom).</p>
-    <p><b>1. Stock is automatic.</b> AUTO-ORDER (on by default, in Buy Stock, B) keeps your stockroom full, and your stocker carries boxes to the shelves. You can still order yourself and carry trolleys (E at the stockroom rack) when it's busy.</p>
-    <p><b>2. Sell more kinds of food.</b> New shelves, fridges and freezers (U) come with products already picked; auto-order and your stocker fill them.</p>
-    <p><b>3. Ring up shoppers.</b> Stand behind the till and <b>hold E</b> to scan. Or hire a cashier (U) and let them do it.</p>
-    <p><b>4. Set prices (P).</b> Charge more and you earn more on each sale, but shoppers grumble "too pricey!" and go to rival stores. Watch what the others charge.</p>
-    <p><b>5. Grow (U).</b> Buy more shelves, fridges and freezers so you sell more kinds of food. Hire staff, open a second checkout lane, run ads. Mop up spills (<b>hold E</b>), because messy stores lose stars.</p>
+    <p><b>1. Stock is automatic.</b> AUTO-ORDER (on by default, in Buy Stock<span class="kd">, B</span><span class="kt"></span>) keeps your stockroom full, and your stocker carries boxes to the shelves. You can still order yourself and carry trolleys (<span class="kd">E</span><span class="kt">✋</span> at the stockroom rack) when it's busy.</p>
+    <p><b>2. Sell more kinds of food.</b> New shelves, fridges and freezers <span class="kd">(U)</span><span class="kt">(🛠️)</span> come with products already picked; auto-order and your stocker fill them.</p>
+    <p><b>3. Ring up shoppers.</b> Stand behind the till and <b>hold <span class="kd">E</span><span class="kt">✋</span></b> to scan. Or hire a cashier <span class="kd">(U)</span><span class="kt">(🛠️)</span> and let them do it.</p>
+    <p><b>4. Set prices <span class="kd">(P)</span><span class="kt">(🏷️)</span>.</b> Charge more and you earn more on each sale, but shoppers grumble "too pricey!" and go to rival stores. Watch what the others charge.</p>
+    <p><b>5. Grow <span class="kd">(U)</span><span class="kt">(🛠️)</span>.</b> Buy more shelves, fridges and freezers so you sell more kinds of food. Hire staff, open a second checkout lane, run ads. Mop up spills (<b>hold <span class="kd">E</span><span class="kt">✋</span></b>), because messy stores lose stars.</p>
     <p>Every morning there's news. A heatwave means ice cream sells fast, and an egg shortage means eggs cost more to buy but sell for more too. Fresh food spoils a little every night, so don't overbuy.</p>
-    <p class="tiny">WASD walk · Shift run · E use / hold E scan & mop · B buy stock · P prices · U upgrades & staff · Tab standings · ←/→ or drag to turn the camera · scroll to zoom · T chat · M music · Esc menu</p>
+    <p class="tiny keys-only">WASD walk · Shift run · E use / hold E scan & mop · B buy stock · P prices · U upgrades & staff · Tab standings · ←/→ or drag to turn the camera · scroll to zoom · T chat · M music · Esc menu</p>
     <div class="row"><button class="back big green">GOT IT</button></div>
   </div>
 </section>
