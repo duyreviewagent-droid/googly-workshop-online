@@ -1,14 +1,18 @@
 // node test/human.mjs — drives a human-owned store through every action
 import { Core } from '../public/js/core.js';
 import * as D from '../public/js/data.js';
+const ok = (c, msg) => { console.log((c ? 'PASS ' : 'FAIL ') + msg); if (!c) process.exitCode = 1; };
 const core = new Core(); const got = [];
 const h = core.connect(m => got.push(m));
 h.recv({ t: 'me', name: 'VIN', color: '#9aa0a6' });
 h.recv({ t: 'solo', diff: 1 });
 const r = [...core.rooms.values()][0], s = r.stores[0], X = D.storeX(0);
+ok(s.auto && s.staff.stocker && s.staff.cashier, 'auto-order on + stocker and cashier hired at start');
+h.recv({ t: 'hire', role: 'cashier', on: false });
+h.recv({ t: 'auto', on: false }); h.recv({ t: 'hire', role: 'stocker', on: false });
 const at = (x, z) => h.recv({ t: 'pos', x: X + x, z, yaw: 0 });
 const errs = () => got.filter(m => m.t === 'err').map(m => m.msg).splice(0);
-const ok = (c, msg) => { console.log((c ? 'PASS ' : 'FAIL ') + msg); if (!c) process.exitCode = 1; };
+
 ok(s.ownerId === h.id && s.name === "VIN'S MARKET", 'owns store 0');
 at(...D.STOCK_RACK); h.recv({ t: 'pick', p: 'banana' });
 ok(s.carry && s.carry.p === 'banana' && s.carry.n === 24, 'picked bananas ' + JSON.stringify(s.carry) + errs());

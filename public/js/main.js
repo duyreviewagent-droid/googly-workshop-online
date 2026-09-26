@@ -577,6 +577,7 @@ function carried(s, pid) { return SLOTS.some((sl, k) => s.fixtures[k] && s.secs[
 function hasRoom(s, pid) { const kind = PROD[pid].kind; return SLOTS.some((sl, k) => s.fixtures[k] && sl.kind === kind && s.secs[k].some(sec => !sec.p || sec.p === pid)); }
 function drawOrder(force) {
   const s = myStore();
+  $('auto-order').checked = !!s.auto;
   if (force || !$('order-list').children.length) {
     const sorted = [...PRODUCTS].sort((a, b) => (carried(s, b.id) - carried(s, a.id)) || (hasRoom(s, b.id) - hasRoom(s, a.id)));
     $('order-list').innerHTML = `<div class="prow orow head"><span></span><span>PRODUCT</span><span>COST TODAY</span><span>BOX OF 24</span><span>YOU HAVE</span><span class="qty">BOXES</span></div>` + sorted.map(p => `<div class="prow orow" data-p="${p.id}"><img src="${iconURL(p.id)}"><span class="nm"><b>${p.name}</b><small data-w></small></span><span data-c></span><span data-b></span><span data-h></span><span class="qty"><button class="grey mini" data-d="-1">−</button><b data-q>0</b><button class="green mini" data-d="1">+</button><button class="grey mini" data-d="5">+5</button></span></div>`).join('');
@@ -599,6 +600,7 @@ function drawOrder(force) {
 }
 const onShelfOf = (s, pid) => SLOTS.reduce((a, sl, k) => a + (s.fixtures[k] ? s.secs[k].reduce((b, sec) => b + (sec.p === pid ? sec.n : 0), 0) : 0), 0);
 $('order-go').onclick = () => { const items = {}; for (const [k, v] of Object.entries(cart)) if (v) items[k] = v; send({ t: 'order', items }); for (const k in cart) cart[k] = 0; drawOrder(); };
+$('auto-order').onchange = () => { send({ t: 'auto', on: $('auto-order').checked }); sfx.click(); toast($('auto-order').checked ? 'Auto-order ON: stock arrives by itself.' : 'Auto-order OFF: order stock yourself with B.'); };
 $('order-clear').onclick = () => { for (const k in cart) cart[k] = 0; sfx.click(); drawOrder(); };
 // --- prices
 function rivalBest(pid) {

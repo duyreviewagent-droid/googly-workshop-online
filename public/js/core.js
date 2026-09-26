@@ -88,14 +88,14 @@ function newStore(i) {
   const s = {
     i, ownerId: 0, ownerName: cpu.name, color: cpu.color, name: cpu.store, style: cpu.style,
     cash: D.START_CASH, rating: 3.6, fixtures: SLOTS.map(() => false), secs: SLOTS.map(() => [{ p: null, n: 0 }, { p: null, n: 0 }]),
-    back: {}, prices: {}, staff: { cashier: 0, cashier2: 0, stocker: 0, janitor: 0 }, perm: {}, ad: 0, adDays: 0,
+    back: {}, prices: {}, staff: { cashier: 1, cashier2: 0, stocker: 1, janitor: 0 }, auto: true, perm: {}, ad: 0, adDays: 0,
     today: blankDay(), sold: {}, soldY: {}, pricey: {}, history: [], queue: [], sc: 0, carry: null,
     boss: null, workers: [], humanScan: false, pos: null, dirty: true, spent: 0, served: 0,
   };
   for (const p of PRODUCTS) { s.prices[p.id] = p.ref; s.back[p.id] = 0; }
   for (const st of D.START_SLOTS) {
     s.fixtures[st.slot] = true;
-    st.secs.forEach((pid, k) => { s.secs[st.slot][k] = { p: pid, n: FIXTURES[SLOTS[st.slot].kind].cap }; s.back[pid] = D.BOX; });
+    st.secs.forEach((pid, k) => { s.secs[st.slot][k] = { p: pid, n: FIXTURES[SLOTS[st.slot].kind].cap }; s.back[pid] = D.BOX * (PROD[pid].spoil ? 1 : 3); });
   }
   return s;
 }
@@ -109,7 +109,7 @@ function pubStore(s) {
   return {
     i: s.i, ownerId: s.ownerId, ownerName: s.ownerName, color: s.color, name: s.name, cash: Math.round(s.cash), rating: r2(s.rating),
     fixtures: s.fixtures, secs: s.secs, back: s.back, prices: s.prices, staff: s.staff, perm: s.perm, ad: s.ad, adDays: s.adDays,
-    today: s.today, q: s.queue.length, tills: s.tills || [0, 0], sc: s.sc, carry: s.carry, history: s.history, soldY: s.soldY, sold: s.sold, pricey: s.pricey,
+    auto: s.auto, today: s.today, q: s.queue.length, tills: s.tills || [0, 0], sc: s.sc, carry: s.carry, history: s.history, soldY: s.soldY, sold: s.sold, pricey: s.pricey,
   };
 }
 
@@ -260,6 +260,7 @@ export class Core {
     const err = msg => c.send({ t: 'err', msg });
     switch (m.t) {
       case 'hold': s.humanScan = !!m.on; break;
+      case 'auto': s.auto = !!m.on; s.dirty = true; if (s.auto) autoOrder(this, r, s, 2); break;
       case 'pick': {
         const p = PROD[m.p]; if (!p) return;
         if (s.carry) return err('Your hands are full.');
@@ -307,7 +308,7 @@ export class Core {
       case 'fixture': {
         const k = clampI(m.slot, 0, SLOTS.length - 1); if (s.fixtures[k]) return;
         const f = FIXTURES[SLOTS[k].kind]; if (s.cash < f.price) return err(`A ${f.name.toLowerCase()} costs ${D.money(f.price)}.`);
-        s.cash -= f.price; s.spent += f.price; s.today.costs += f.price; s.fixtures[k] = true; s.dirty = true;
+        s.cash -= f.price; s.spent += f.price; s.today.costs += f.price; s.fixtures[k] = true; autoAssign(s, k); s.dirty = true;
         this.bcast(r, { t: 'fx', k: 'build', i: s.i, slot: k });
         break;
       }
@@ -357,6 +358,7 @@ export class Core {
     }
     for (const s of r.stores) {
       if (!s.ownerId) cpuThink(this, r, s, dt);
+      else if (s.auto) { s.autoT = (s.autoT || 0) - dt; if (s.autoT <= 0) { s.autoT = 2; autoOrder(this, r, s, 2); } }
       for (const w of s.workers) workerStep(this, r, s, w, dt);
       this.checkout(r, s, dt);
     }
@@ -527,7 +529,7 @@ function rollEvent(r) {
 function restore(save) {
   const stores = save.stores.map((x, i) => {
     const s = newStore(i);
-    Object.assign(s, { ownerId: x.ownerId ? 1 : 0, ownerName: x.ownerName, color: x.color, name: x.name, cash: x.cash, rating: x.rating, fixtures: x.fixtures, secs: x.secs, back: x.back, prices: x.prices, staff: x.staff, perm: x.perm || {}, ad: x.ad || 0, adDays: x.adDays || 0, today: x.today || blankDay(), history: x.history || [], soldY: x.soldY || {}, sold: x.sold || {}, pricey: x.pricey || {}, style: x.style || s.style, spent: x.spent || 0, served: x.served || 0 });
+    Object.assign(s, { ownerId: x.ownerId ? 1 : 0, ownerName: x.ownerName, color: x.color, name: x.name, cash: x.cash, rating: x.rating, fixtures: x.fixtures, secs: x.secs, back: x.back, prices: x.prices, staff: x.staff, perm: x.perm || {}, ad: x.ad || 0, adDays: x.adDays || 0, today: x.today || blankDay(), history: x.history || [], soldY: x.soldY || {}, sold: x.sold || {}, pricey: x.pricey || {}, auto: x.auto !== false, style: x.style || s.style, spent: x.spent || 0, served: x.served || 0 });
     return s;
   });
   return { day: save.day, t: save.t, settings: save.settings || { diff: 1 }, event: save.event, whole: save.whole, stores, spills: [], trucks: [] };
@@ -658,7 +660,7 @@ function sectionNeed(s, claimed) {
     s.secs[k].forEach((sec, j) => {
       if (!sec.p || claimed.has(k * 2 + j)) return;
       const cap = FIXTURES[sl.kind].cap, room = cap - sec.n;
-      if (sec.n > cap * 0.5 || room < 4 || !s.back[sec.p]) return;
+      if (sec.n > cap * 0.65 || room < 4 || !s.back[sec.p]) return;
       if (sec.n < bn) { bn = sec.n; best = [k, j]; }
     });
   });
@@ -762,22 +764,7 @@ function cpuThink(core, r, s, dt) {
     if (Math.abs(v - s.prices[p.id]) > 0.009) { s.prices[p.id] = r2(v); s.dirty = true; }
   }
   if (r.t < 1 && diff === 0 && Math.random() < 0.5) return; // easy owners oversleep
-  // restock the stockroom
-  const reserve = 60, items = {}; let cost = 0;
-  for (const p of PRODUCTS) {
-    if (!carries(s, p.id)) continue;
-    // keep the shelves full plus a box or two out back (more on busy days)
-    const shelfCap = sectionsFor(s, p.id).reduce((a, [k]) => a + FIXTURES[SLOTS[k].kind].cap, 0);
-    const busy = Math.max(1, (s.soldY[p.id] || 0) / Math.max(1, shelfCap)) * (r.event?.demand?.[p.id] || 1);
-    const target = shelfCap + D.BOX * [0.8, 1.5, 2][diff] * busy;
-    const have = s.back[p.id] + onShelf(s, p.id) + inTransit(r, s, p.id);
-    if (have < target * 0.6) {
-      const boxes = Math.ceil((target - have) / D.BOX), unit = D.BOX * p.cost * r.whole[p.id];
-      const can = Math.min(boxes, Math.floor((s.cash - reserve - cost) / unit));
-      if (can > 0) { items[p.id] = can; cost += can * unit; }
-    }
-  }
-  if (Object.keys(items).length) { if (Object.values(items).reduce((a, b) => a + b, 0) >= 10) cost *= 0.95; core.order(r, s, items, r2(cost)); }
+  autoOrder(core, r, s, [0.8, 1.5, 2][diff]);
   // staff
   const hire = role => { if (!s.staff[role]) { s.staff[role] = 1; addWorker(core, s, role); s.dirty = true; } };
   const fire = role => { if (s.staff[role]) { s.staff[role] = 0; s.workers = s.workers.filter(w => w.role !== role); s.dirty = true; } };
@@ -793,8 +780,7 @@ function cpuThink(core, r, s, dt) {
       const f = FIXTURES[SLOTS[k].kind];
       if (s.cash > f.price + [1500, 900, 700][diff] + (s.style === 'cheap' ? -150 : 0)) {
         s.cash -= f.price; s.spent += f.price; s.today.costs += f.price; s.fixtures[k] = true;
-        const choices = PRODUCTS.filter(p => p.kind === SLOTS[k].kind && !carries(s, p.id)).sort((a, b) => b.demand * (b.ref - b.cost) - a.demand * (a.ref - a.cost));
-        choices.slice(0, 2).forEach((p, j) => { s.secs[k][j] = { p: p.id, n: 0 }; });
+        autoAssign(s, k);
         s.dirty = true; core.bcast(r, { t: 'fx', k: 'build', i: s.i, slot: k });
       }
       break;
@@ -815,6 +801,31 @@ function cpuThink(core, r, s, dt) {
     if (s.style === 'shark' && leader > s.cash + 800) buy('radio');
     if (r.day === D.FEAST_DAY - 1 && diff > 0) buy('radio');
   }
+}
+/** Keep every product we sell topped up: full shelves plus some boxes out back. */
+function autoOrder(core, r, s, boxesBack) {
+  const reserve = 60, items = {}; let cost = 0;
+  for (const p of PRODUCTS) {
+    if (!carries(s, p.id)) continue;
+    const shelfCap = sectionsFor(s, p.id).reduce((a, [k]) => a + FIXTURES[SLOTS[k].kind].cap, 0);
+    const busy = Math.max(1, (s.soldY[p.id] || 0) / Math.max(1, shelfCap)) * (r.event?.demand?.[p.id] || 1);
+    const target = shelfCap + D.BOX * (p.spoil ? Math.min(1, boxesBack) : boxesBack) * busy;
+    const have = s.back[p.id] + onShelf(s, p.id) + inTransit(r, s, p.id);
+    if (have < target * 0.6) {
+      const boxes = Math.ceil((target - have) / D.BOX), unit = D.BOX * p.cost * r.whole[p.id];
+      const can = Math.min(boxes, Math.floor((s.cash - reserve - cost) / unit));
+      if (can > 0) { items[p.id] = can; cost += can * unit; }
+    }
+  }
+  if (!Object.keys(items).length) return null;
+  if (Object.values(items).reduce((a, b) => a + b, 0) >= 10) cost *= 0.95;
+  core.order(r, s, items, r2(cost));
+  return items;
+}
+/** New fixtures come with the two best-selling things that fit and aren't sold yet. */
+function autoAssign(s, k) {
+  const choices = PRODUCTS.filter(p => p.kind === SLOTS[k].kind && !carries(s, p.id)).sort((a, b) => b.demand * (b.ref - b.cost) - a.demand * (a.ref - a.cost));
+  choices.slice(0, 2).forEach((p, j) => { if (!s.secs[k][j].p) s.secs[k][j] = { p: p.id, n: 0 }; });
 }
 function inTransit(r, s, pid) { return r.trucks.filter(t => t.s === s.i).reduce((a, t) => a + (t.items[pid] || 0) * D.BOX, 0); }
 
